@@ -5,7 +5,7 @@
 <li>由于Bolt依赖的资源变慢，导致处理能力不足，导致消息堆积，CPU使用增高</li>
 </ul>
 <p><img src="/media/14681656295513.jpg" alt="storm拓扑部署结构"></p>
-<h2 id="2-cgroup简介"><a href="#2-cgroup简介" class="headerlink" title="2. cgroup简介"></a>2. cgroup简介</h2><h3 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h3><p>cgroups（即control groups的简称）是Linux内核提供的一项用来限制及分离一组进程资源使用（CPU，内存，磁盘IO，网络等）的特性，从内核版本2.6.24开始支持。</p>
+<h2 id="2-cgroup简介"><a href="#2-cgroup简介" class="headerlink" title="2. cgroup简介"></a>2. cgroup简介</h2><h3 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h3><p>cgroups（control groups）是Linux内核提供的一项用来限制及分离一组进程资源使用（CPU，内存，磁盘IO，网络等）的特性，从内核版本2.6.24开始支持。</p>
 <p>cgroups中的基本概念如下：</p>
 <ul>
 <li>任务（task）：系统中的线程</li>
@@ -46,12 +46,19 @@
 <li><a href="http://tiewei.github.io/devops/howto-use-cgroup/" target="_blank" rel="external">http://tiewei.github.io/devops/howto-use-cgroup/</a></li>
 <li><a href="http://www.infoq.com/cn/articles/docker-kernel-knowledge-cgroups-resource-isolation" target="_blank" rel="external">http://www.infoq.com/cn/articles/docker-kernel-knowledge-cgroups-resource-isolation</a></li>
 </ol>
-<h2 id="3-storm-0-9-x版本使用cgroup"><a href="#3-storm-0-9-x版本使用cgroup" class="headerlink" title="3. storm 0.9.x版本使用cgroup"></a>3. storm 0.9.x版本使用cgroup</h2><p>0.9.x版本的storm并未提供cgroup的资源控制机制，因此需要使用外挂程序的方式（如定时执行脚本的方式）来对拓扑的资源使用进行限制。</p>
+<h2 id="3-storm-0-9-x版本使用cgroup"><a href="#3-storm-0-9-x版本使用cgroup" class="headerlink" title="3. storm 0.9.x版本使用cgroup"></a>3. storm 0.9.x版本使用cgroup</h2><p>0.9.x版本的storm并未提供cgroup的资源控制机制，因此需要使用外挂程序的方式（如定时执行脚本的方式）来对拓扑的资源使用进行限制, 以下为对每个worker的最大cpu使用时间进行限制的简单实现。</p>
 <ul>
-<li>CPU守护：每台supervisor上执行crontab定时任务</li>
-<li><h2 id="4-storm-1-x-x版本使用cgroup"><a href="#4-storm-1-x-x版本使用cgroup" class="headerlink" title="4. storm 1.x.x版本使用cgroup"></a>4. storm 1.x.x版本使用cgroup</h2></li>
+<li>CPU守护：每台supervisor上执行crontab定时任务，将worker进程定时加入CPU控制组，限制worker进程最大CPU使用时间<br><img src="/media/14683368587727.jpg" alt=""></li>
 </ul>
-</div><script type="text/javascript" src="/js/share.js?v=0.0.0" async></script><a data-url="http://yoursite.com/2016/07/10/storm-cgroup/" data-id="ciqgb3jnl0001nls6nj8f6r9k" class="article-share-link">分享到</a><div class="tags"></div><div id="disqus_thread"><script>var disqus_shortname = 'lostk1ng';
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div><div class="line">10</div></pre></td><td class="code"><pre><div class="line">控制组结构：</div><div class="line">[liyan@xxxxx]$ lscgroup</div><div class="line">cpu:/                                       # CPU根控制组</div><div class="line">cpu:/weibo_storm                            # CPU根控制组下由脚本自动建立weibo_storm控制组</div><div class="line">cpu:/weibo_storm/local-worker-pid-22341     # weibo_storm控制组下为每个worker进程自动建立一个控制组，限制相应的worker进程CPU资源</div><div class="line">cpu:/weibo_storm/local-worker-pid-18547</div><div class="line">cpu:/weibo_storm/local-worker-pid-12848</div><div class="line">cpu:/weibo_storm/local-worker-pid-12063</div><div class="line">cpu:/weibo_storm/local-worker-pid-9842</div><div class="line">cpu:/weibo_storm/local-worker-pid-7559</div></pre></td></tr></table></figure>
+<ul>
+<li>cgroup清理：woker进程死掉后（一般由kill拓扑或者rebalance触发），自动清理无用的CPU控制组可以通过设置参数notify_on_release=1 &amp; release_agent=/path/storm-cpu-cgroup-remove.sh来实现</li>
+<li>阈值报警：当cgroup到达最大限制值时，需报警通知业务人员进行干预。可以通过cpu.stat中的统计值来实现，如</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">alarm=(nr_throttled_t2-nr_throttled_t1)/(nr_periods_t2-nr_periods_t1)</div></pre></td></tr></table></figure>
+<p>脚本参考：<br><a href="https://github.com/lostk1ng/storm-cgroups" target="_blank" rel="external">https://github.com/lostk1ng/storm-cgroups</a></p>
+<h2 id="4-storm-1-0-x版本使用cgroup"><a href="#4-storm-1-0-x版本使用cgroup" class="headerlink" title="4. storm 1.0.x版本使用cgroup"></a>4. storm 1.0.x版本使用cgroup</h2><p>1.0.x版本的storm<a href="http://storm.apache.org/releases/1.0.0/cgroups_in_storm.html" target="_blank" rel="external">官方文档</a>已经声称支持cgroups, 但是发现相关<a href="https://github.com/apache/storm/pull/1053" target="_blank" rel="external">PR</a>只merge到了master分支，并没有merge到1.0.x-branch，因此目前最新版本的storm仍然不支持cgroups。<br><img src="/media/14683912790382.jpg" alt=""></p>
+</div><script type="text/javascript" src="/js/share.js?v=0.0.0" async></script><a data-url="http://yoursite.com/2016/07/10/storm-cgroup/" data-id="ciqkika940000peppdtihfiu3" class="article-share-link">分享到</a><div class="tags"></div><div id="disqus_thread"><script>var disqus_shortname = 'lostk1ng';
 var disqus_identifier = '2016/07/10/storm-cgroup/';
 var disqus_title = '使用cgroup对storm中的拓扑进行资源隔离';
 var disqus_url = 'http://yoursite.com/2016/07/10/storm-cgroup/';
